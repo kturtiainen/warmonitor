@@ -64,11 +64,11 @@ Screen {
     margin-bottom: 1;
 }
 
-#defcon-1 { color: $error; }
-#defcon-2 { color: $error; }
-#defcon-3 { color: $warning; }
-#defcon-4 { color: $success; }
-#defcon-5 { color: $success; }
+.defcon-1 { color: $error; }
+.defcon-2 { color: $error; }
+.defcon-3 { color: $warning; }
+.defcon-4 { color: $success; }
+.defcon-5 { color: $success; }
 
 #last-event-label {
     color: $text-muted;
@@ -115,6 +115,10 @@ Screen {
 
 .event-row:hover {
     background: $panel-lighten-1;
+}
+
+.event-row:focus {
+    background: $accent;
 }
 
 .event-severity-critical { color: bright_red; text-style: bold; }

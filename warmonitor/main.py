@@ -5,6 +5,7 @@ Entry point: `warmonitor` or `uv run warmonitor`.
 
 from __future__ import annotations
 
+import webbrowser
 from datetime import datetime, timezone
 
 from textual.app import App, ComposeResult
@@ -13,10 +14,12 @@ from textual.containers import ScrollableContainer, Vertical, Horizontal
 from textual.reactive import reactive
 from textual.widgets import Label, Static
 
+from warmonitor.cache import load_cache, save_cache
+from warmonitor.config import load_sources
 from warmonitor.fetcher import fetch_all
 from warmonitor.models import Event
-from warmonitor.sources import SOURCES
 
+SOURCES = load_sources()
 REFRESH_INTERVAL = 60  # seconds
 
 SEVERITY_EMOJI = {5: "🔴", 4: "🟠", 3: "🟡", 2: "🔵", 1: "⚪"}
@@ -70,6 +73,21 @@ def _calculate_defcon(events: list[Event]) -> int:
     return 5
 
 
+class EventRow(Static):
+    """A focusable event row that can open its URL in a browser."""
+
+    can_focus = True
+
+    def __init__(self, event: Event, renderable="", **kwargs) -> None:
+        super().__init__(renderable, **kwargs)
+        self._event = event
+
+    def on_key(self, key_event) -> None:
+        if key_event.key in ("enter", "o"):
+            webbrowser.open(self._event.url)
+            key_event.stop()
+
+
 class WarmonitorApp(App):
     """Live Iran–USA conflict dashboard."""
 
@@ -80,6 +98,7 @@ class WarmonitorApp(App):
         Binding("q", "quit", "Quit", show=True),
         Binding("f", "filter", "Filter ≥3", show=True),
         Binding("s", "sort_toggle", "Sort", show=True),
+        Binding("o", "open_url", "Open URL", show=True),
     ]
 
     events_data: reactive[list[Event]] = reactive([], layout=True)
@@ -127,6 +146,7 @@ class WarmonitorApp(App):
                 )
 
     async def on_mount(self) -> None:
+        self.events_data = load_cache()
         self._update_timestamp()
         self.set_interval(1, self._update_timestamp)
         self.set_interval(REFRESH_INTERVAL, self.action_refresh)
@@ -149,10 +169,11 @@ class WarmonitorApp(App):
         try:
             new_events = await fetch_all(SOURCES, self.source_status)
             # Merge with existing, keeping up to MAX_EVENTS
-            existing_ids = {e.id for e in new_events}
-            merged = new_events + [e for e in self.events_data if e.id not in existing_ids]
+            new_ids = {e.id for e in new_events}
+            merged = new_events + [e for e in self.events_data if e.id not in new_ids]
             merged.sort(key=lambda e: e.published, reverse=True)
             self.events_data = merged[:200]
+            save_cache(self.events_data)
         finally:
             self.fetching = False
             self._update_source_indicators()
@@ -214,15 +235,17 @@ class WarmonitorApp(App):
             sev_class = SEVERITY_CLASS[event.severity]
             age = _time_ago(event.published)
             text = f"{emoji} [{age}] {event.title}\n    ↳ {event.source_name}"
-            container.mount(Static(text, classes=f"event-row {sev_class}"))
+            container.mount(EventRow(event, text, classes=f"event-row {sev_class}"))
 
     def _refresh_status(self) -> None:
         events = self.events_data
         defcon = _calculate_defcon(events)
 
-        # DEFCON label with color
+        # DEFCON label with color via CSS class (keep ID stable)
         defcon_label = self.query_one("#defcon-label", Label)
-        defcon_label.id = f"defcon-{defcon}"
+        for i in range(1, 6):
+            defcon_label.remove_class(f"defcon-{i}")
+        defcon_label.add_class(f"defcon-{defcon}")
         defcon_label.update(f"DEFCON: {defcon}")
 
         # Last event
@@ -250,6 +273,11 @@ class WarmonitorApp(App):
         breakdown += f"🔵 {counts[2]}\n"
         breakdown += f"⚪ {counts[1]}"
         self.query_one("#severity-breakdown", Label).update(breakdown)
+
+    def action_open_url(self) -> None:
+        focused = self.focused
+        if isinstance(focused, EventRow):
+            webbrowser.open(focused._event.url)
 
     def action_filter(self) -> None:
         self.filter_active = not self.filter_active
