@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>🔴 WARMONITOR — Live Conflict Dashboard</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #0a0a0a;
+      color: #c8c8c8;
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    header {
+      background: #111;
+      border-bottom: 1px solid #333;
+      padding: 10px 20px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 12px;
+    }
+
+    header .title { color: #ff4444; font-size: 1.2em; font-weight: bold; }
+    header .subtitle { color: #888; }
+    header .timestamp { margin-left: auto; color: #555; font-size: 0.9em; }
+
+    .defcon-banner {
+      text-align: center;
+      padding: 12px;
+      font-size: 1.4em;
+      font-weight: bold;
+      letter-spacing: 2px;
+      border-bottom: 2px solid #333;
+    }
+
+    .defcon-1 { background: #3a0000; color: #ff2222; }
+    .defcon-2 { background: #2a1200; color: #ff6600; }
+    .defcon-3 { background: #2a2200; color: #ffcc00; }
+    .defcon-4 { background: #001a2a; color: #00aaff; }
+    .defcon-5 { background: #0a0a0a; color: #888; }
+
+    .layout {
+      display: flex;
+      gap: 0;
+      min-height: calc(100vh - 100px);
+    }
+
+    .sources-panel {
+      width: 220px;
+      min-width: 180px;
+      background: #111;
+      border-right: 1px solid #333;
+      padding: 14px 12px;
+      flex-shrink: 0;
+    }
+
+    .sources-panel h2 {
+      color: #aaa;
+      font-size: 0.85em;
+      letter-spacing: 2px;
+      margin-bottom: 10px;
+      text-transform: uppercase;
+    }
+
+    .source-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 3px 0;
+      font-size: 0.85em;
+      color: #aaa;
+    }
+
+    .source-status-ok    { color: #22cc44; }
+    .source-status-error { color: #ff4444; }
+    .source-status-unknown { color: #888; }
+
+    .feed-panel {
+      flex: 1;
+      padding: 14px 16px;
+      overflow-y: auto;
+    }
+
+    .feed-panel h2 {
+      color: #aaa;
+      font-size: 0.85em;
+      letter-spacing: 2px;
+      margin-bottom: 12px;
+      text-transform: uppercase;
+    }
+
+    .event {
+      display: block;
+      padding: 8px 10px;
+      margin-bottom: 6px;
+      border-left: 3px solid #444;
+      text-decoration: none;
+      transition: background 0.15s;
+      border-radius: 2px;
+    }
+
+    .event:hover { background: #1a1a1a; }
+
+    .event-critical { border-left-color: #ff2222; }
+    .event-high     { border-left-color: #ff7700; }
+    .event-medium   { border-left-color: #ffcc00; }
+    .event-low      { border-left-color: #00aaff; }
+    .event-info     { border-left-color: #888; }
+
+    .event-title {
+      display: block;
+      font-weight: bold;
+    }
+
+    .event-critical .event-title { color: #ff5555; }
+    .event-high     .event-title { color: #ff9944; }
+    .event-medium   .event-title { color: #ffee55; }
+    .event-low      .event-title { color: #55ccff; }
+    .event-info     .event-title { color: #cccccc; }
+
+    .event-meta {
+      display: block;
+      color: #666;
+      font-size: 0.82em;
+      margin-top: 2px;
+    }
+
+    .badge {
+      display: inline-block;
+      font-size: 0.72em;
+      padding: 1px 5px;
+      border-radius: 2px;
+      margin-right: 6px;
+      font-weight: bold;
+      letter-spacing: 1px;
+    }
+
+    .badge-critical { background: #3a0000; color: #ff5555; }
+    .badge-high     { background: #2a1200; color: #ff9944; }
+    .badge-medium   { background: #2a2200; color: #ffee55; }
+    .badge-low      { background: #001a2a; color: #55ccff; }
+    .badge-info     { background: #1a1a1a; color: #aaa; }
+
+    .no-events { color: #555; padding: 20px 0; }
+
+    @media (max-width: 640px) {
+      .sources-panel { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <span class="title">🔴 WARMONITOR</span>
+  <span class="subtitle">Iran–USA Conflict Dashboard</span>
+  <span class="timestamp">Last updated: {{ now }}</span>
+</header>
+
+<div class="defcon-banner defcon-{{ defcon }}">
+  ⚠ DEFCON {{ defcon }}
+</div>
+
+<div class="layout">
+
+  <aside class="sources-panel">
+    <h2>Sources</h2>
+    {% for src in sources %}
+    <div class="source-item">
+      {% if src.status == 'ok' %}
+        <span class="source-status-ok">●</span>
+      {% elif src.status == 'error' %}
+        <span class="source-status-error">●</span>
+      {% else %}
+        <span class="source-status-unknown">●</span>
+      {% endif %}
+      <span>{{ src.name }}</span>
+    </div>
+    {% endfor %}
+  </aside>
+
+  <main class="feed-panel">
+    <h2>⚡ Live Feed</h2>
+
+    {% if events %}
+      {% for ev in events %}
+      <a class="event event-{{ ev.severity_color }}" href="{{ ev.url }}" target="_blank" rel="noopener noreferrer">
+        <span class="event-title">
+          <span class="badge badge-{{ ev.severity_color }}">{{ ev.severity_label }}</span>{{ ev.title }}
+        </span>
+        <span class="event-meta">{{ ev.age }} · {{ ev.source_name }}</span>
+      </a>
+      {% endfor %}
+    {% else %}
+      <p class="no-events">No matching events found.</p>
+    {% endif %}
+  </main>
+
+</div>
+
+</body>
+</html>
