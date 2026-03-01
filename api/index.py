@@ -107,3 +107,66 @@ def index():
         sources=sources_info,
         now=now_str,
     )
+
+
+# --- Tests for the Flask index route (used by pytest) ---
+
+def test_index_route(monkeypatch):
+    """
+    Exercise the index() route using Flask's test client while patching
+    warmonitor.fetcher.fetch_all to return deterministic events.
+    """
+
+    class _FakeEvent:
+        def __init__(self, title, url, source_name, severity, published):
+            self.title = title
+            self.url = url
+            self.source_name = source_name
+            self.severity = severity
+            self.published = published
+
+    class _FakeSource:
+        def __init__(self, _id, name):
+            self.id = _id
+            self.name = name
+
+    async def _fake_fetch_all(sources, source_status):
+        # Set deterministic source status values for the provided sources.
+        for s in sources:
+            source_status[s.id] = "ok"
+        # Single critical event very recent -> DEFCON 1 expected.
+        published = datetime.now(timezone.utc)
+        return [
+            _FakeEvent(
+                title="Test Event",
+                url="https://example.com/event",
+                source_name="Test Source",
+                severity=5,
+                published=published,
+            )
+        ]
+
+    # Patch warmonitor.fetcher.fetch_all as requested by the rule.
+    import warmonitor.fetcher as _fetcher_mod
+
+    monkeypatch.setattr(_fetcher_mod, "fetch_all", _fake_fetch_all, raising=False)
+    # Also patch the local fetch_all symbol used by index().
+    monkeypatch.setattr(__name__, "fetch_all", _fake_fetch_all, raising=False)
+
+    # Provide deterministic SOURCES with a single fake source.
+    fake_sources = [_FakeSource("fake-source", "Fake Source")]
+    monkeypatch.setattr(__name__, "SOURCES", fake_sources, raising=False)
+
+    # Use Flask's test client to hit the index route.
+    with app.test_client() as client:
+        resp = client.get("/")
+
+    assert resp.status_code == 200
+    html = resp.data.decode("utf-8")
+
+    # Ensure DEFCON information and enriched event fields are present.
+    assert "DEFCON" in html
+    assert "Test Event" in html
+    assert "Test Source" in html
+    # Severity 5 should map to the CRITICAL label in the rendered page.
+    assert "CRITICAL" in html
